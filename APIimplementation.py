@@ -165,18 +165,16 @@ class userquery:
             else:
                 self.outerGroups.append(group)
                 try:
-                    if self.databaseScheme.aliases[group] != group:
-                        #Search on the ID field, not the basic field.
-                        #debug(self.databaseScheme.aliases.keys())
-                        self.groups.add(self.databaseScheme.aliases[group])
-                        table = self.databaseScheme.tableToLookIn[group]
+                    #Search on the ID field, not the basic field.
+                    #debug(self.databaseScheme.aliases.keys())
+                    self.groups.add(self.databaseScheme.aliases[group])
+                    table = self.databaseScheme.tableToLookIn[group]
 
-                        joinfield = self.databaseScheme.aliases[group]
-                        self.finalMergeTables.add(" JOIN " + table + " USING (" + joinfield + ") ")
-                    else:
-                        self.groups.add(group)
+                    joinfield = self.databaseScheme.aliases[group]
+                    self.finalMergeTables.add(" JOIN " + table + " USING (" + joinfield + ") ")
+
                 except KeyError:
-                    self.groups.add(group)                
+                    self.groups.add(group)
 
         """
         There are the selections which can include table refs, and the groupings, which may not:
@@ -654,11 +652,7 @@ class userquery:
         """ % self.__dict__
         return countsQuery
 
-    def debug_query(self):
-        query = self.ratio_query(materialize = False)
-        return json.dumps(self.denominator.groupings.split(",")) + query 
-    
-    def ratio_query(self,materialize=True):
+    def ratio_query(self):
         """
         We launch a whole new userquery instance here to build the denominator, based on the 'compare_dictionary' option (which in most
         cases is the search_limits without the keys, see above; it can also be specially defined using asterisks as a shorthand to identify other fields to drop.
@@ -667,14 +661,9 @@ class userquery:
 
         self.denominator =  userquery(outside_dictionary = self.compare_dictionary,db=self.db,databaseScheme=self.databaseScheme)
         self.supersetquery = self.denominator.counts_query()
-        supersetIndices = self.denominator.groupings.split(",")
-        if materialize:
-            self.supersetquery = derived_table(self.supersetquery,self.db,indices=supersetIndices).materialize()
-        
+
         self.mainquery    = self.counts_query()
-        if materialize:
-            self.mainquery = derived_table(self.mainquery,self.db,indices=supersetIndices).materialize()
-        
+
         self.countcommand = ','.join(self.finaloperations)
 
         self.totalMergeTerms = "USING (" + self.denominator.groupings + " ) "
@@ -690,9 +679,10 @@ class userquery:
             %(totalselections)s
             %(countcommand)s
         FROM
-             %(mainquery)s as numerator
+            ( %(mainquery)s
+            ) as numerator
         RIGHT OUTER JOIN
-            %(supersetquery)s as denominator
+            ( %(supersetquery)s ) as denominator
             %(totalMergeTerms)s
         %(joinSuffix)s
         GROUP BY %(groupings)s;""" % self.__dict__
@@ -706,7 +696,8 @@ class userquery:
             %(totalselections)s
             %(countcommand)s
         FROM
-            %(mainquery)s as numerator
+            ( %(mainquery)s
+            ) as numerator
         %(joinSuffix)s
         GROUP BY %(groupings)s;""" % self.__dict__
 
@@ -1325,8 +1316,7 @@ except:
 
 def debug(string):
     """
-    Makes it easier to debug through a web browser by handling the headers.
-    Despite being called a `string`, it can be anything that python can print.
+    Makes it easier to debug through a web browser by handling the headers
     """
     print headers('1')
     print "<br>"
