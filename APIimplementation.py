@@ -10,6 +10,7 @@ import decimal
 import MySQLdb
 import warnings
 import hashlib
+import cPickle as pickle
 
 """
 #There are 'fast' and 'full' tables for books and words;
@@ -165,14 +166,16 @@ class userquery:
             else:
                 self.outerGroups.append(group)
                 try:
-                    #Search on the ID field, not the basic field.
-                    #debug(self.databaseScheme.aliases.keys())
-                    self.groups.add(self.databaseScheme.aliases[group])
-                    table = self.databaseScheme.tableToLookIn[group]
+                    if self.databaseScheme.aliases[group] != group:
+                        #Search on the ID field, not the basic field.
+                        #debug(self.databaseScheme.aliases.keys())
+                        self.groups.add(self.databaseScheme.aliases[group])
+                        table = self.databaseScheme.tableToLookIn[group]
 
-                    joinfield = self.databaseScheme.aliases[group]
-                    self.finalMergeTables.add(" JOIN " + table + " USING (" + joinfield + ") ")
-
+                        joinfield  = self.databaseScheme.aliases[group]
+                        self.finalMergeTables.add(" JOIN " + table + " USING (" + joinfield + ") ")
+                    else:
+                        self.groups.add(group)
                 except KeyError:
                     self.groups.add(group)
 
@@ -652,7 +655,11 @@ class userquery:
         """ % self.__dict__
         return countsQuery
 
-    def ratio_query(self):
+    def debug_query(self):
+        query = self.ratio_query(materialize = False)
+        return json.dumps(self.denominator.groupings.split(",")) + query 
+
+    def ratio_query(self,materialize=True):
         """
         We launch a whole new userquery instance here to build the denominator, based on the 'compare_dictionary' option (which in most
         cases is the search_limits without the keys, see above; it can also be specially defined using asterisks as a shorthand to identify other fields to drop.
@@ -661,9 +668,14 @@ class userquery:
 
         self.denominator =  userquery(outside_dictionary = self.compare_dictionary,db=self.db,databaseScheme=self.databaseScheme)
         self.supersetquery = self.denominator.counts_query()
-
+        supersetIndices = self.denominator.groupings.split(",")
+        if materialize:
+            self.supersetquery = derived_table(self.supersetquery,self.db,indices=supersetIndices).materialize()
+        
         self.mainquery    = self.counts_query()
-
+        if materialize:
+            self.mainquery = derived_table(self.mainquery,self.db,indices=supersetIndices).materialize()
+        
         self.countcommand = ','.join(self.finaloperations)
 
         self.totalMergeTerms = "USING (" + self.denominator.groupings + " ) "
@@ -679,13 +691,13 @@ class userquery:
             %(totalselections)s
             %(countcommand)s
         FROM
-            ( %(mainquery)s
-            ) as numerator
+             %(mainquery)s as numerator
         RIGHT OUTER JOIN
-            ( %(supersetquery)s ) as denominator
+            %(supersetquery)s as denominator
             %(totalMergeTerms)s
-        %(joinSuffix)s
+            %(joinSuffix)s
         GROUP BY %(groupings)s;""" % self.__dict__
+
 
 
         #There are dramatic speed improvement to not returning 0 results when not needed in a merge query.
@@ -696,9 +708,8 @@ class userquery:
             %(totalselections)s
             %(countcommand)s
         FROM
-            ( %(mainquery)s
-            ) as numerator
-        %(joinSuffix)s
+            %(mainquery)s as numerator
+            %(joinSuffix)s
         GROUP BY %(groupings)s;""" % self.__dict__
 
         return query
@@ -976,10 +987,13 @@ class derived_table(object):
         """
         Checks what's already been calculated.
         """
-        try:
-            (self.count,self.created,self.modified,self.createCode,self.data) = self.db.cursor.execute("SELECT count,created,modified,createCode,data FROM bookworm_scratch.cache WHERE fieldname='%s'" %self.queryID)[0]
+        self.db.cursor.execute("SELECT count,created,modified,createCode,data FROM bookworm_scratch.cache WHERE fieldname='%s'" %self.queryID)
+        values = self.db.cursor.fetchall()
+
+        if len(values) >= 1:
+            (self.count,self.created,self.modified,self.createCode,self.data) = values[0]
             return True
-        except:
+        else:
             (self.count,self.created,self.modified,self.createCode,self.data) = [None]*5
             return False
 
@@ -992,7 +1006,7 @@ class derived_table(object):
         if self.data is not None:
             #Datacode should never exist without createCode also.
             self.db.cursor.execute(self.createCode)
-            self.fillTableWithData(pickle.loads(self.data,protocol=-1))
+            self.fillTableWithData(pickle.loads(self.data))
             return True
         else:
             return False
@@ -1023,10 +1037,10 @@ class derived_table(object):
         return True
             
     def materializeFromBookworm(self,temp,postDataToCache=True,postCreateToCache=True):
-        import cPickle as pickle
         self.db.cursor.execute("CREATE %(tempString)s TABLE %(queryID)s %(indices)s ENGINE=%(engine)s %(query)s;" % self.__dict__)
         self.db.cursor.execute("SHOW CREATE TABLE %s" %self.queryID)
         self.newCreateCode = self.db.cursor.fetchall()[0][1]
+        self.newCreateCode = re.sub("`[^`]*?`",self.queryID,self.newCreateCode,count=1)
         self.db.cursor.execute("SELECT * FROM %s" %self.queryID)
         #coerce the results to a list of tuples, then pickle it.
         self.newdata = pickle.dumps([row for row in self.db.cursor.fetchall()],protocol=-1)
