@@ -998,16 +998,27 @@ class derived_table(object):
             return False
 
     def fillTableWithData(self,data):
-        dataCode = "INSERT INTO %s values ("%self.queryID + ", ".join(["%s"]*len(data[0])) + ")"
+        try:
+            dataCode = "INSERT INTO %s values ("%self.queryID + ", ".join(["%s"]*len(data[0])) + ")"
+        except IndexError:
+            return False
         self.db.cursor.executemany(dataCode,data)
         self.db.db.commit()
-            
+        return True
+    
     def materializeFromCache(self,temp):
         if self.data is not None:
+            try:
+                data = pickle.loads(self.data)
+            except EOFError:
+                return False
+            if len(data)==0:
+                #Presume that an empty set is no good, and keep trying; may be expensive.
+                return False
             #Datacode should never exist without createCode also.
             self.db.cursor.execute(self.createCode)
-            self.fillTableWithData(pickle.loads(self.data))
-            return True
+            #If this succeeds, it will return true.
+            return self.fillTableWithData(data)
         else:
             return False
 
