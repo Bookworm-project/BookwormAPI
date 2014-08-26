@@ -31,47 +31,6 @@ class dbConnect(object):
 # via the 'execute' function whose behavior
 # depends on the mode that is passed to it.
 # Given the dictionary, it can return a number of objects.
-# The "Search_limits" array in the passed dictionary determines how many elements it returns; this lets multiple queries be bundled together.
-# Most functions describe a subquery that might be combined into one big query in various ways.
-
-class userqueries:
-    #This is a set of userqueries that are bound together; each element in search limits is iterated over, and we're done.
-    #currently used for various different groups sent in a bundle (multiple lines on a Bookworm chart).
-    #A sufficiently sophisticated 'group by' search might make this unnecessary.
-    #But until that day, it's useful to be able to return lists of elements, which happens in here.
-
-    def __init__(self,outside_dictionary = {"counttype":["Percentage_of_Books"],"search_limits":[{"word":["polka dot"],"LCSH":["Fiction"]}]},db = None):
-        try:
-            self.database = outside_dictionary.setdefault('database', 'default')
-            prefs = general_prefs[self.database]
-        except KeyError: #If it's not in the option, use some default preferences and search on localhost. This will work in most cases here on out.
-            prefs = general_prefs['default']
-            prefs['database'] = self.database
-        self.prefs = prefs
-
-        self.wordsheap = prefs['fastword']
-        self.words = prefs['fullword']
-        if 'search_limits' not in outside_dictionary.keys():
-            outside_dictionary['search_limits'] = [{}]
-        #coerce one-element dictionaries to an array.
-        if isinstance(outside_dictionary['search_limits'],dict):
-            #(allowing passing of just single dictionaries instead of arrays)
-            outside_dictionary['search_limits'] = [outside_dictionary['search_limits']]
-        self.returnval = []
-        self.queryInstances = []
-        db = dbConnect(prefs)
-        databaseScheme = databaseSchema(db)
-        for limits in outside_dictionary['search_limits']:
-            mylimits = copy.deepcopy(outside_dictionary)
-            mylimits['search_limits'] = limits
-            localQuery = userquery(mylimits,db=db,databaseScheme=databaseScheme)
-            self.queryInstances.append(localQuery)
-            self.returnval.append(localQuery.execute())
-
-    def execute(self):
-        
-        return self.returnval
-
 
 class userquery:
     def __init__(self,outside_dictionary = {"counttype":["Percentage_of_Books"],"search_limits":{"word":["polka dot"],"LCSH":["Fiction"]}},db=None,databaseScheme=None):
@@ -217,49 +176,6 @@ class userquery:
         self.smoothingType = outside_dictionary.setdefault('smoothingType',"triangle")
         self.smoothingSpan = outside_dictionary.setdefault('smoothingSpan',3)
         self.method = outside_dictionary.setdefault('method',"Nothing")
-
-    def determineOutsideDictionary(self):
-        """
-        deprecated--tagged for deletion.
-        """
-        self.compare_dictionary = copy.deepcopy(self.outside_dictionary)
-        if 'compare_limits' in self.outside_dictionary.keys():
-            self.compare_dictionary['search_limits'] = self.outside_dictionary['compare_limits']
-            del self.outside_dictionary['compare_limits']
-        elif sum([bool(re.search(r'\*',string)) for string in self.outside_dictionary['search_limits'].keys()]) > 0:
-            #If any keys have stars at the end, drop them from the compare set
-            #This is often a _very_ helpful definition for succinct comparison queries of many types.
-            #The cost is that an asterisk doesn't allow you
-
-            for key in self.outside_dictionary['search_limits'].keys():
-                if re.search(r'\*',key):
-                    #rename the main one to not have a star
-                    self.outside_dictionary['search_limits'][re.sub(r'\*','',key)] = self.outside_dictionary['search_limits'][key]
-                    #drop it from the compare_limits and delete the version in the search_limits with a star
-                    del self.outside_dictionary['search_limits'][key]
-                    del self.compare_dictionary['search_limits'][key]
-        else: #if nothing specified, we compare the word to the corpus.
-            deleted = False
-            for key in self.outside_dictionary['search_limits'].keys():
-                if re.search('words?\d',key) or re.search('gram$',key) or re.match(r'word',key):
-                    del self.compare_dictionary['search_limits'][key]
-                    deleted = True
-            if not deleted:
-                #If there are no words keys, just delete the first key of any type.
-                #Sort order can't be assumed, but this is a useful failure mechanism of last resort. Maybe.
-                try:
-                    del self.compare_dictionary['search_limits'][self.outside_dictionary['search_limits'].keys()[0]]
-                except:
-                    pass
-        """
-        The grouping behavior here is not desirable, but I'm not quite sure how yet.
-        Aha--one way is that it accidentally drops out a bunch of options. I'm just disabling it: let's see what goes wrong now.
-        """
-        try:
-            pass#self.compare_dictionary['groups'] = [group for group in self.compare_dictionary['groups'] if not re.match('word',group) and not re.match("[u]?[bn]igram",group)]# topicfix? and not re.match("topic",group)]
-        except:
-            self.compare_dictionary['groups'] = [self.compare_dictionary['time_measure']]
-
 
     def derive_variables(self):
         #These are locally useful, and depend on the search limits put in.
@@ -659,10 +575,6 @@ class userquery:
         """ % self.__dict__
         return countsQuery
 
-    def debug_query(self):
-        query = self.ratio_query(materialize = False)
-        return json.dumps(self.denominator.groupings.split(",")) + query 
-    
     def query(self,materialize=False):
         """
         We launch a whole new userquery instance here to build the denominator, based on the 'compare_dictionary' option (which in most
@@ -1183,9 +1095,6 @@ def where_from_hash(myhash,joiner=" AND ",comp = " = ",escapeStrings=True):
                 #(In cases where the same book could have two different years associated with it)
                 whereterm.append(" (" + " OR ".join([" (" + key+comp+quotesep+escape(value)+quotesep+") " for value in values])+ ") ")
     return "(" + joiner.join(whereterm) + ")"
-    #This works pretty well, except that it requires very specific sorts of terms going in, I think.
-
-
 
 #I'd rather have all this smoothing stuff done at the client side, but currently it happens here.
 
@@ -1199,15 +1108,3 @@ try:
     print json.dumps(result)
 except:
     pass
-
-
-
-def debug(string):
-    """
-    Makes it easier to debug through a web browser by handling the headers.
-    Despite being called a `string`, it can be anything that python can print.
-    """
-    print headers('1')
-    print "<br>"
-    print string
-    print "<br>"
