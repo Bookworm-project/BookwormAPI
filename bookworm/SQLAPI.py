@@ -119,7 +119,7 @@ class userquery:
         self.words_collation = outside_dictionary.setdefault('words_collation',"Case_Insensitive")
 
         lookups = {"Case_Insensitive":'word','lowercase':'lowercase','casesens':'casesens',"case_insensitive":"word","Case_Sensitive":"casesens","All_Words_with_Same_Stem":"stem",'stem':'stem'}
-        self.word_field = lookups[self.words_collation]
+        self.word_field = str(MySQLdb.escape_string(lookups[self.words_collation]))
 
         self.time_limits = outside_dictionary.setdefault('time_limits',[0,10000000])
         self.time_measure = outside_dictionary.setdefault('time_measure','year')
@@ -460,10 +460,10 @@ class userquery:
                     if self.word_field=="case_insensitive" or self.word_field=="Case_Insensitive":
                         searchingFor = searchingFor.lower()
 
-                    selectString =  "SELECT wordid FROM wordsheap WHERE %s = %s"
+                    selectString =  "SELECT wordid FROM wordsheap WHERE %s = %%s" % self.word_field
                     cursor = self.db.cursor
                     try:
-                        cursor.execute(selectString, (self.word_field, searchingFor))
+                        cursor.execute(selectString, (searchingFor))
                     except MySQLdb.Error, e:
                         # Return HTML error code and log the following
                         # print e
