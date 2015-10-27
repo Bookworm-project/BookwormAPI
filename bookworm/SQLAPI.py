@@ -460,9 +460,15 @@ class userquery:
                     if self.word_field=="case_insensitive" or self.word_field=="Case_Insensitive":
                         searchingFor = searchingFor.lower()
 
-                    selectString =  "SELECT wordid FROM wordsheap WHERE %s = '%s'" %(self.word_field,searchingFor)
-                    cursor = self.db.cursor;
-                    cursor.execute(selectString)
+                    selectString =  "SELECT wordid FROM wordsheap WHERE %s = %s"
+                    cursor = self.db.cursor
+                    try:
+                        cursor.execute(selectString, (self.word_field, searchingFor))
+                    except MySQLdb.Error, e:
+                        # Return HTML error code and log the following
+                        # print e
+                        # print cursor._last_executed
+                        print ''
                     for row in cursor.fetchall():
                         wordid = row[0]
                         try:
