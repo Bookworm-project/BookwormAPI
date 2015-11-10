@@ -1,6 +1,6 @@
 ## Bookworm API
 
-**This entire repo is deprecated: the API is now bundled inside the [BookwormDB](github.com/bookworm-project/bookwormDB) repo**
+**This entire repo is deprecated: the API is now bundled inside the [BookwormDB](http://github.com/bookworm-project/bookwormDB) repo**
 
 
 This is an implementation of the API for Bookworm, written in Python. It primarily implements the API on a MySQL database now, but includes classes for more easily implementing it on top of other platforms (such as Solr).
